@@ -102,7 +102,8 @@
       <button id="showStudentsBtn" style="background:var(--saudi-green);color:#fff;border:none;margin-top:10px">عرض الطلاب</button>
       <button id="barcodeBtn" style="background:var(--accent);color:#000;border:none;margin-top:10px">📷 قراءة الباركود</button>
       <button id="stopBarcodeBtn" style="background:#dc3545;color:#fff;border:none;margin-top:10px;display:none">⏹️ إيقاف الماسح</button>
-      <button id="testCameraBtn" style="background:#17a2b8;color:#fff;border:none;margin-top:10px">🔍 اختبار الكاميرا</button>
+      <button id="exportExcelBtn" style="background:#28a745;color:#fff;border:none;margin-top:10px">📊 تصدير Excel</button>
+      <button id="exportPdfBtn" style="background:#dc3545;color:#fff;border:none;margin-top:10px">📄 تصدير PDF</button>
       <select id="cameraSelect" class="hidden"></select>
       <div id="barcodeReader" class="hidden"></div>
       <div id="barcodeStatus" class="hidden" style="margin-top:10px;padding:10px;background:#e9ecef;border-radius:8px;text-align:center"></div>
@@ -115,6 +116,7 @@
   <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script>
     let studentData = [];
     let grades = new Set();
@@ -341,46 +343,6 @@
       statusDiv.innerHTML = '';
     });
 
-    // زر اختبار الكاميرا
-    document.getElementById('testCameraBtn').addEventListener('click', async ()=>{
-      const statusDiv = document.getElementById('barcodeStatus');
-      statusDiv.classList.remove('hidden');
-      statusDiv.innerHTML = 'جاري اختبار الكاميرا...';
-      
-      try {
-        // اختبار مباشر للكاميرا
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 640 },
-            height: { ideal: 480 }
-          } 
-        });
-        
-        // إيقاف البث
-        stream.getTracks().forEach(track => track.stop());
-        
-        statusDiv.innerHTML = `
-          <div style="color: #28a745;">
-            ✅ <strong>الكاميرا تعمل بنجاح!</strong><br>
-            يمكنك الآن استخدام ماسح الباركود
-          </div>
-        `;
-        
-      } catch (error) {
-        console.error('خطأ في اختبار الكاميرا:', error);
-        statusDiv.innerHTML = `
-          <div style="color: #dc3545;">
-            ❌ <strong>فشل اختبار الكاميرا:</strong><br>
-            ${error.message}<br><br>
-            <strong>الحلول:</strong><br>
-            • تأكد من منح إذن الكاميرا<br>
-            • أغلق التطبيقات الأخرى<br>
-            • جرب متصفح آخر
-          </div>
-        `;
-      }
-    });
 
     // دالة قراءة الباركود
     function startBarcodeScanning(video, stream) {
@@ -490,6 +452,206 @@
         </div>
       `;
     }
+
+    // ====== دوال التصدير ======
+    
+    // دالة تصدير Excel
+    document.getElementById('exportExcelBtn').addEventListener('click', () => {
+      const schoolName = document.getElementById('schoolName').value || 'غير محدد';
+      const teacherName = document.getElementById('teacherName').value || 'غير محدد';
+      const subjectName = document.getElementById('subjectName').value || 'غير محدد';
+      const grade = document.getElementById('grade').value || 'غير محدد';
+      const classroom = document.getElementById('classroom').value || 'غير محدد';
+      const period = document.getElementById('period').value || 'غير محدد';
+      
+      const currentDate = new Date();
+      const dateStr = currentDate.toLocaleDateString('ar-SA');
+      const timeStr = currentDate.toLocaleTimeString('ar-SA');
+      
+      // جمع بيانات الحضور
+      const attendanceData = [];
+      const studentItems = document.querySelectorAll('.student-item');
+      
+      studentItems.forEach(item => {
+        const name = item.getAttribute('data-name');
+        const select = item.querySelector('select');
+        const status = select.value || 'غير محدد';
+        
+        attendanceData.push({
+          'اسم الطالب': name,
+          'الحالة': status,
+          'التاريخ': dateStr,
+          'الوقت': timeStr
+        });
+      });
+      
+      if (attendanceData.length === 0) {
+        alert('لا توجد بيانات حضور للتصدير. تأكد من عرض قائمة الطلاب أولاً.');
+        return;
+      }
+      
+      // إنشاء ملف Excel
+      const wb = XLSX.utils.book_new();
+      
+      // إضافة معلومات التقرير
+      const reportInfo = [
+        ['اسم المدرسة', schoolName],
+        ['اسم المعلم', teacherName],
+        ['المادة', subjectName],
+        ['الصف', grade],
+        ['الفصل', classroom],
+        ['رقم الحصة', period],
+        ['التاريخ', dateStr],
+        ['الوقت', timeStr],
+        ['', ''],
+        ['', '']
+      ];
+      
+      const ws1 = XLSX.utils.aoa_to_sheet(reportInfo);
+      XLSX.utils.book_append_sheet(wb, ws1, 'معلومات التقرير');
+      
+      // إضافة بيانات الحضور
+      const ws2 = XLSX.utils.json_to_sheet(attendanceData);
+      XLSX.utils.book_append_sheet(wb, ws2, 'بيانات الحضور');
+      
+      // حفظ الملف
+      const fileName = `تقرير_حضور_${grade}_${classroom}_${dateStr.replace(/\//g, '-')}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    });
+    
+    // دالة تصدير PDF
+    document.getElementById('exportPdfBtn').addEventListener('click', () => {
+      const schoolName = document.getElementById('schoolName').value || 'غير محدد';
+      const teacherName = document.getElementById('teacherName').value || 'غير محدد';
+      const subjectName = document.getElementById('subjectName').value || 'غير محدد';
+      const grade = document.getElementById('grade').value || 'غير محدد';
+      const classroom = document.getElementById('classroom').value || 'غير محدد';
+      const period = document.getElementById('period').value || 'غير محدد';
+      
+      const currentDate = new Date();
+      const dateStr = currentDate.toLocaleDateString('ar-SA');
+      const timeStr = currentDate.toLocaleTimeString('ar-SA');
+      
+      // جمع بيانات الحضور
+      const attendanceData = [];
+      const studentItems = document.querySelectorAll('.student-item');
+      
+      studentItems.forEach(item => {
+        const name = item.getAttribute('data-name');
+        const select = item.querySelector('select');
+        const status = select.value || 'غير محدد';
+        
+        attendanceData.push({
+          name: name,
+          status: status
+        });
+      });
+      
+      if (attendanceData.length === 0) {
+        alert('لا توجد بيانات حضور للتصدير. تأكد من عرض قائمة الطلاب أولاً.');
+        return;
+      }
+      
+      // إنشاء PDF
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      
+      // إعداد الخط العربي
+      doc.setFont('helvetica');
+      
+      // العنوان الرئيسي
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('تقرير حضور الطلاب', 105, 20, { align: 'center' });
+      
+      // خط فاصل
+      doc.line(20, 25, 190, 25);
+      
+      // معلومات التقرير
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      
+      let yPos = 35;
+      const lineHeight = 7;
+      
+      doc.text(`اسم المدرسة: ${schoolName}`, 20, yPos);
+      yPos += lineHeight;
+      doc.text(`اسم المعلم: ${teacherName}`, 20, yPos);
+      yPos += lineHeight;
+      doc.text(`المادة: ${subjectName}`, 20, yPos);
+      yPos += lineHeight;
+      doc.text(`الصف: ${grade}`, 20, yPos);
+      yPos += lineHeight;
+      doc.text(`الفصل: ${classroom}`, 20, yPos);
+      yPos += lineHeight;
+      doc.text(`رقم الحصة: ${period}`, 20, yPos);
+      yPos += lineHeight;
+      doc.text(`التاريخ: ${dateStr}`, 20, yPos);
+      yPos += lineHeight;
+      doc.text(`الوقت: ${timeStr}`, 20, yPos);
+      
+      yPos += 15;
+      
+      // جدول الحضور
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('بيانات الحضور', 105, yPos, { align: 'center' });
+      yPos += 10;
+      
+      // رؤوس الجدول
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('م', 25, yPos);
+      doc.text('اسم الطالب', 40, yPos);
+      doc.text('الحالة', 120, yPos);
+      doc.text('التوقيع', 160, yPos);
+      
+      yPos += 5;
+      doc.line(20, yPos, 190, yPos);
+      yPos += 8;
+      
+      // بيانات الطلاب
+      doc.setFont('helvetica', 'normal');
+      attendanceData.forEach((student, index) => {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+        
+        doc.text((index + 1).toString(), 25, yPos);
+        doc.text(student.name, 40, yPos);
+        doc.text(student.status, 120, yPos);
+        doc.line(160, yPos - 3, 190, yPos - 3);
+        
+        yPos += 8;
+      });
+      
+      // إحصائيات
+      yPos += 10;
+      doc.setFont('helvetica', 'bold');
+      doc.text('إحصائيات الحضور:', 20, yPos);
+      yPos += 8;
+      
+      const present = attendanceData.filter(s => s.status === 'حاضر').length;
+      const absent = attendanceData.filter(s => s.status === 'غائب').length;
+      const late = attendanceData.filter(s => s.status === 'متأخر').length;
+      const total = attendanceData.length;
+      
+      doc.setFont('helvetica', 'normal');
+      doc.text(`إجمالي الطلاب: ${total}`, 20, yPos);
+      yPos += 6;
+      doc.text(`الحضور: ${present}`, 20, yPos);
+      yPos += 6;
+      doc.text(`الغياب: ${absent}`, 20, yPos);
+      yPos += 6;
+      doc.text(`التأخير: ${late}`, 20, yPos);
+      yPos += 6;
+      doc.text(`نسبة الحضور: ${((present / total) * 100).toFixed(1)}%`, 20, yPos);
+      
+      // حفظ الملف
+      const fileName = `تقرير_حضور_${grade}_${classroom}_${dateStr.replace(/\//g, '-')}.pdf`;
+      doc.save(fileName);
+    });
 
   </script>
 </body>
