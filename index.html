@@ -108,6 +108,7 @@
       <button id="barcodeBtn" style="background:var(--accent);color:#000;border:none;margin-top:10px">📷 قراءة الباركود</button>
       <button id="stopBarcodeBtn" style="background:#dc3545;color:#fff;border:none;margin-top:10px;display:none">⏹️ إيقاف الماسح</button>
       <button id="retryCameraBtn" style="background:#17a2b8;color:#fff;border:none;margin-top:10px;display:none">🔄 إعادة المحاولة</button>
+      <button id="checkCameraBtn" style="background:#6c757d;color:#fff;border:none;margin-top:10px">🔍 فحص الكاميرا</button>
       <select id="cameraSelect" class="hidden"></select>
       <div id="barcodeReader" class="hidden">
         <div class="barcode-overlay">
@@ -276,6 +277,12 @@
         return;
       }
 
+      // تحقق من دعم الكاميرا
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        statusDiv.innerHTML = 'المتصفح لا يدعم الكاميرا. جرب Chrome أو Firefox.';
+        return;
+      }
+
       // أوقف أي ماسح يعمل حالياً
       if(html5QrCode){
         try { await html5QrCode.stop(); } catch(_) {}
@@ -329,6 +336,56 @@
       
       // إعادة تشغيل الماسح
       document.getElementById('barcodeBtn').click();
+    });
+
+    // زر فحص الكاميرا
+    document.getElementById('checkCameraBtn').addEventListener('click', async ()=>{
+      const statusDiv = document.getElementById('barcodeStatus');
+      statusDiv.classList.remove('hidden');
+      statusDiv.innerHTML = 'جاري فحص الكاميرا...';
+      
+      try {
+        // فحص دعم الكاميرا
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          statusDiv.innerHTML = '❌ المتصفح لا يدعم الكاميرا. جرب Chrome أو Firefox.';
+          return;
+        }
+
+        // فحص الكاميرات المتاحة
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        if (videoDevices.length === 0) {
+          statusDiv.innerHTML = '❌ لم يتم العثور على كاميرات متاحة.';
+          return;
+        }
+
+        // محاولة الوصول للكاميرا
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(track => track.stop());
+        
+        statusDiv.innerHTML = `
+          <div style="color: #28a745;">
+            ✅ <strong>الكاميرا تعمل بشكل صحيح!</strong><br>
+            • تم العثور على ${videoDevices.length} كاميرا<br>
+            • تم اختبار الوصول بنجاح<br>
+            • يمكنك الآن استخدام ماسح الباركود
+          </div>
+        `;
+        
+      } catch (error) {
+        console.error('خطأ في فحص الكاميرا:', error);
+        statusDiv.innerHTML = `
+          <div style="color: #dc3545;">
+            ❌ <strong>مشكلة في الكاميرا:</strong><br>
+            ${error.message}<br><br>
+            <strong>الحلول:</strong><br>
+            • تأكد من منح إذن الكاميرا<br>
+            • أغلق التطبيقات الأخرى<br>
+            • جرب متصفح آخر
+          </div>
+        `;
+      }
     });
 
     async function startScanner(cameraId){
@@ -411,13 +468,21 @@
             // فشلت جميع المحاولات
             console.error('فشل تشغيل الكاميرا بجميع الطرق', err);
             statusDiv.innerHTML = `
-              <div style="color: #dc3545;">
-                <strong>تعذر تشغيل الكاميرا</strong><br>
-                <small>جرب الحلول التالية:</small><br>
-                • تأكد من منح إذن الكاميرا<br>
-                • تأكد من أن الكاميرا غير مستخدمة في تطبيق آخر<br>
-                • جرب تحديث الصفحة (F5)<br>
-                • جرب متصفح آخر (Chrome أو Firefox)
+              <div style="color: #dc3545; text-align: right;">
+                <strong>تعذر تشغيل الكاميرا</strong><br><br>
+                <strong>الحلول المقترحة:</strong><br>
+                1️⃣ <strong>منح إذن الكاميرا:</strong><br>
+                &nbsp;&nbsp;• ابحث عن أيقونة الكاميرا في شريط العنوان<br>
+                &nbsp;&nbsp;• اضغط عليها واختر "السماح"<br><br>
+                2️⃣ <strong>إغلاق التطبيقات الأخرى:</strong><br>
+                &nbsp;&nbsp;• أغلق Zoom, Teams, Skype<br>
+                &nbsp;&nbsp;• تأكد من عدم استخدام الكاميرا في تطبيق آخر<br><br>
+                3️⃣ <strong>تحديث الصفحة:</strong><br>
+                &nbsp;&nbsp;• اضغط F5 أو Ctrl+R<br><br>
+                4️⃣ <strong>متصفح آخر:</strong><br>
+                &nbsp;&nbsp;• جرب Chrome أو Firefox<br>
+                &nbsp;&nbsp;• تأكد من أن المتصفح محدث<br><br>
+                <button onclick="location.reload()" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; margin-top: 10px;">🔄 تحديث الصفحة</button>
               </div>
             `;
             
