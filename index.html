@@ -112,6 +112,7 @@
       <button id="retryCameraBtn" style="background:#17a2b8;color:#fff;border:none;margin-top:10px;display:none">🔄 إعادة المحاولة</button>
       <button id="checkCameraBtn" style="background:#6c757d;color:#fff;border:none;margin-top:10px">🔍 فحص الكاميرا</button>
       <button id="testCameraBtn" style="background:#28a745;color:#fff;border:none;margin-top:10px">🎥 اختبار الكاميرا</button>
+      <button id="testBarcodeBtn" style="background:#ffc107;color:#000;border:none;margin-top:10px">🔍 اختبار الباركود</button>
       <select id="cameraSelect" class="hidden"></select>
       <div id="barcodeReader" class="hidden">
         <div class="barcode-overlay">
@@ -228,7 +229,17 @@
             const name = r["الاسم"] || r[Object.keys(r)[0]];
             const div = document.createElement('div');
             div.className = 'student-item';
-            div.setAttribute('data-id', r["الهوية"] || name);
+            
+            // البحث عن رقم الطالب في عدة أعمدة محتملة
+            const studentId = r["الهوية"] || r["رقم الطالب"] || r["الرقم"] || r["ID"] || r["id"] || r["الرقم الأكاديمي"] || r["الرقم الدراسي"] || name;
+            div.setAttribute('data-id', studentId);
+            
+            // إضافة معلومات إضافية للبحث
+            div.setAttribute('data-name', name);
+            div.setAttribute('data-all-ids', JSON.stringify([
+              r["الهوية"], r["رقم الطالب"], r["الرقم"], r["ID"], r["id"], 
+              r["الرقم الأكاديمي"], r["الرقم الدراسي"], name
+            ].filter(Boolean)));
             const select = document.createElement('select');
             select.innerHTML = `
               <option value="">اختر</option>
@@ -478,6 +489,15 @@
       }
     });
 
+    // زر اختبار الباركود
+    document.getElementById('testBarcodeBtn').addEventListener('click', ()=>{
+      const testBarcode = prompt('أدخل رقم الباركود للاختبار:');
+      if (testBarcode) {
+        console.log('اختبار الباركود:', testBarcode);
+        handleBarcodeScanned(testBarcode);
+      }
+    });
+
     async function startScanner(cameraId){
       const readerDiv = document.getElementById('barcodeReader');
       const statusDiv = document.getElementById('barcodeStatus');
@@ -604,6 +624,8 @@
     function handleBarcodeScanned(decodedText) {
       const statusDiv = document.getElementById('barcodeStatus');
       
+      console.log('البحث عن الباركود:', decodedText);
+      
       // إظهار إطار أزرق حول الباركود (مؤقت)
       showBarcodeFrame({ decodedText });
       
@@ -611,27 +633,78 @@
       const items = listDiv.querySelectorAll('.student-item');
       let found = false;
       let studentName = '';
+      let matchedId = '';
+      
+      // تنظيف نص الباركود
+      const cleanBarcode = decodedText.toString().trim();
       
       items.forEach(item=>{
         const studentId = item.getAttribute('data-id');
-        if(studentId && (decodedText.includes(studentId) || studentId.includes(decodedText))){
-          const select = item.querySelector('select');
-          select.value = 'حاضر';
-          item.style.background = 'var(--present)';
-          found = true;
-          studentName = item.querySelector('span').textContent;
-          statusDiv.innerHTML = `✅ تم تسجيل حضور الطالب: ${studentName} (${studentId})`;
+        const studentName = item.getAttribute('data-name');
+        const allIds = JSON.parse(item.getAttribute('data-all-ids') || '[]');
+        
+        // البحث في جميع الأرقام المحتملة
+        const searchIds = [studentId, ...allIds].filter(Boolean);
+        
+        for(let id of searchIds) {
+          const cleanId = id.toString().trim();
           
-          // إضافة تأثير بصري
-          item.style.transform = 'scale(1.05)';
-          setTimeout(() => {
-            item.style.transform = 'scale(1)';
-          }, 500);
+          // مقارنة دقيقة
+          if (cleanBarcode === cleanId || 
+              cleanBarcode.includes(cleanId) || 
+              cleanId.includes(cleanBarcode)) {
+            
+            const select = item.querySelector('select');
+            select.value = 'حاضر';
+            item.style.background = 'var(--present)';
+            found = true;
+            matchedId = cleanId;
+            
+            // إظهار اسم الطالب فقط بدون رسالة نجاح
+            statusDiv.innerHTML = `<div style="color: #28a745; font-weight: bold; text-align: center;">${studentName}</div>`;
+            
+            // إضافة تأثير بصري سريع
+            item.style.transform = 'scale(1.05)';
+            setTimeout(() => {
+              item.style.transform = 'scale(1)';
+            }, 300);
+            
+            console.log('تم العثور على مطابقة:', { studentName, matchedId, barcode: cleanBarcode });
+            
+            // إعادة تشغيل المسح بعد ثانيتين
+            setTimeout(() => {
+              if (window.isScanning && window.isScanning()) {
+                // المسح يعمل، لا حاجة لإعادة التشغيل
+                return;
+              }
+              // إعادة تشغيل المسح
+              const video = document.getElementById('cameraVideo');
+              if (video && video.srcObject) {
+                startBarcodeDetection(video, video.srcObject);
+              }
+            }, 2000);
+            
+            return; // توقف عند أول مطابقة
+          }
         }
       });
       
       if(!found){
-        statusDiv.innerHTML = `❌ لم يتم العثور على طالب بالرقم: ${decodedText}`;
+        statusDiv.innerHTML = `
+          <div style="color: #dc3545;">
+            ❌ لم يتم العثور على طالب بالرقم: ${cleanBarcode}<br>
+            <small>تأكد من:</small><br>
+            • رفع ملف Excel للطلاب<br>
+            • عرض قائمة الطلاب<br>
+            • أن رقم الباركود موجود في عمود "الهوية" أو "رقم الطالب"
+          </div>
+        `;
+        console.log('لم يتم العثور على مطابقة للباركود:', cleanBarcode);
+        console.log('الطلاب المتاحين:', Array.from(items).map(item => ({
+          name: item.getAttribute('data-name'),
+          id: item.getAttribute('data-id'),
+          allIds: item.getAttribute('data-all-ids')
+        })));
       }
     }
 
@@ -640,34 +713,39 @@
       const frame = document.getElementById('barcodeFrame');
       const text = document.getElementById('barcodeText');
       
-      if (decodedResult && decodedResult.resultPoints && decodedResult.resultPoints.length > 0) {
-        const points = decodedResult.resultPoints;
-        if (points.length >= 4) {
-          // حساب موقع الإطار بناءً على نقاط الباركود
-          const x = Math.min(...points.map(p => p.x));
-          const y = Math.min(...points.map(p => p.y));
-          const width = Math.max(...points.map(p => p.x)) - x;
-          const height = Math.max(...points.map(p => p.y)) - y;
-          
-          frame.style.left = x + 'px';
-          frame.style.top = y + 'px';
-          frame.style.width = width + 'px';
-          frame.style.height = height + 'px';
-          frame.style.display = 'block';
-          
-          // إظهار نص الباركود
-          text.style.left = x + 'px';
-          text.style.top = (y - 30) + 'px';
-          text.textContent = decodedResult.decodedText;
-          text.style.display = 'block';
-          
-          // إخفاء الإطار بعد ثانيتين
-          setTimeout(() => {
-            frame.style.display = 'none';
-            text.style.display = 'none';
-          }, 2000);
-        }
-      }
+      // إظهار إطار في منتصف منطقة الكاميرا
+      const readerDiv = document.getElementById('barcodeReader');
+      const rect = readerDiv.getBoundingClientRect();
+      
+      // إطار في منتصف المنطقة
+      frame.style.left = '50%';
+      frame.style.top = '50%';
+      frame.style.width = '200px';
+      frame.style.height = '100px';
+      frame.style.transform = 'translate(-50%, -50%)';
+      frame.style.display = 'block';
+      frame.style.border = '3px solid #007bff';
+      frame.style.background = 'rgba(0, 123, 255, 0.1)';
+      frame.style.borderRadius = '8px';
+      frame.style.animation = 'pulse 1s infinite';
+      
+      // إظهار نص الباركود
+      text.style.left = '50%';
+      text.style.top = '20px';
+      text.style.transform = 'translateX(-50%)';
+      text.textContent = decodedResult.decodedText || 'تم قراءة الباركود';
+      text.style.display = 'block';
+      text.style.background = '#007bff';
+      text.style.color = 'white';
+      text.style.padding = '5px 10px';
+      text.style.borderRadius = '4px';
+      text.style.fontSize = '12px';
+      
+      // إخفاء الإطار بعد ثانية واحدة
+      setTimeout(() => {
+        frame.style.display = 'none';
+        text.style.display = 'none';
+      }, 1000);
     }
   </script>
 </body>
