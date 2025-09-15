@@ -130,6 +130,7 @@
   <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script>
     let studentData = [];
     let grades = new Set();
@@ -240,6 +241,11 @@
               r["الهوية"], r["رقم الطالب"], r["الرقم"], r["ID"], r["id"], 
               r["الرقم الأكاديمي"], r["الرقم الدراسي"], name
             ].filter(Boolean)));
+            
+            // إضافة QR code data إذا كان موجوداً
+            if (r["الباركود"] && typeof r["الباركود"] === 'string') {
+              div.setAttribute('data-qr-content', r["الباركود"]);
+            }
             const select = document.createElement('select');
             select.innerHTML = `
               <option value="">اختر</option>
@@ -574,7 +580,18 @@
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // استخدام QuaggaJS لقراءة الباركود
+        // استخدام jsQR لقراءة QR codes
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        
+        if (code) {
+          console.log('تم قراءة QR Code:', code.data);
+          handleBarcodeScanned(code.data);
+          isScanning = false;
+          return;
+        }
+        
+        // إذا لم يجد QR code، جرب QuaggaJS للباركود العادي
         Quagga.decodeSingle({
           src: canvas.toDataURL(),
           numOfWorkers: 0,
@@ -642,9 +659,15 @@
         const studentId = item.getAttribute('data-id');
         const studentName = item.getAttribute('data-name');
         const allIds = JSON.parse(item.getAttribute('data-all-ids') || '[]');
+        const qrContent = item.getAttribute('data-qr-content');
         
         // البحث في جميع الأرقام المحتملة
         const searchIds = [studentId, ...allIds].filter(Boolean);
+        
+        // إضافة محتوى QR code للبحث
+        if (qrContent) {
+          searchIds.push(qrContent);
+        }
         
         for(let id of searchIds) {
           const cleanId = id.toString().trim();
@@ -696,7 +719,8 @@
             <small>تأكد من:</small><br>
             • رفع ملف Excel للطلاب<br>
             • عرض قائمة الطلاب<br>
-            • أن رقم الباركود موجود في عمود "الهوية" أو "رقم الطالب"
+            • أن محتوى QR Code موجود في عمود "الباركود"<br>
+            • أو إضافة عمود "الهوية" يحتوي على أرقام فريدة
           </div>
         `;
         console.log('لم يتم العثور على مطابقة للباركود:', cleanBarcode);
