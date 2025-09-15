@@ -44,7 +44,12 @@
     .student-item{background:#fff;padding:12px;border-radius:10px;box-shadow:0 4px 8px rgba(0,0,0,0.05);display:flex;flex-direction:column;align-items:flex-start;gap:8px;transition:background 0.3s}
     .student-item span{font-weight:bold;color:#0b1720}
 
-    #barcodeReader {margin-top:20px; width:100%; max-width:500px;}
+    #barcodeReader {margin-top:20px; width:100%; max-width:500px; position: relative;}
+    #barcodeReader video {width: 100%; border-radius: 8px; border: 2px solid var(--saudi-green);}
+    .barcode-overlay {position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 10;}
+    .barcode-frame {position: absolute; border: 3px solid #007bff; border-radius: 8px; background: rgba(0, 123, 255, 0.1); display: none; animation: pulse 1s infinite;}
+    @keyframes pulse {0% {opacity: 0.5;} 50% {opacity: 1;} 100% {opacity: 0.5;}}
+    .barcode-text {position: absolute; top: -30px; left: 50%; transform: translateX(-50%); background: #007bff; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; white-space: nowrap;}
   </style>
 </head>
 <body>
@@ -103,7 +108,12 @@
       <button id="barcodeBtn" style="background:var(--accent);color:#000;border:none;margin-top:10px">📷 قراءة الباركود</button>
       <button id="stopBarcodeBtn" style="background:#dc3545;color:#fff;border:none;margin-top:10px;display:none">⏹️ إيقاف الماسح</button>
       <select id="cameraSelect" class="hidden"></select>
-      <div id="barcodeReader" class="hidden"></div>
+      <div id="barcodeReader" class="hidden">
+        <div class="barcode-overlay">
+          <div class="barcode-frame" id="barcodeFrame"></div>
+          <div class="barcode-text" id="barcodeText"></div>
+        </div>
+      </div>
       <div id="barcodeStatus" class="hidden" style="margin-top:10px;padding:10px;background:#e9ecef;border-radius:8px;text-align:center"></div>
     </div>
 
@@ -273,7 +283,13 @@
       // اطلب الإذن للوصول للكاميرا أولاً (مهم لسفاري iOS وبعض المتصفحات)
       try{
         statusDiv.innerHTML = 'جاري طلب إذن الكاميرا...';
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          } 
+        });
         // أوقف البث المؤقت حتى نبدأ عبر Html5Qrcode
         stream.getTracks().forEach(t=>t.stop());
         statusDiv.innerHTML = 'تم منح إذن الكاميرا. جاري إعداد الماسح...';
@@ -349,19 +365,26 @@
       // تحسين إعدادات التعرف على الباركود
       const config = { 
         fps: 10, 
-        qrbox: { width: 250, height: 250 },
+        qrbox: { width: 300, height: 300 },
         aspectRatio: 1.0,
-        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+        showTorchButtonIfSupported: true,
+        showZoomSliderIfSupported: true,
+        defaultZoomValueIfSupported: 2,
+        useBarCodeDetectorIfSupported: true
       };
 
       // دالة رد ناتج المسح مع تحسينات
       const onScan = (decodedText, decodedResult) => {
         console.log('تم قراءة الباركود:', decodedText);
-        statusDiv.innerHTML = `تم قراءة الباركود: ${decodedText}`;
+        
+        // إظهار إطار أزرق حول الباركود
+        showBarcodeFrame(decodedResult);
         
         const listDiv = document.getElementById('studentsList');
         const items = listDiv.querySelectorAll('.student-item');
         let found = false;
+        let studentName = '';
         
         items.forEach(item=>{
           const studentId = item.getAttribute('data-id');
@@ -370,7 +393,8 @@
             select.value = 'حاضر';
             item.style.background = 'var(--present)';
             found = true;
-            statusDiv.innerHTML = `تم تسجيل حضور الطالب: ${studentId}`;
+            studentName = item.querySelector('span').textContent;
+            statusDiv.innerHTML = `✅ تم تسجيل حضور الطالب: ${studentName} (${studentId})`;
             
             // إضافة تأثير بصري
             item.style.transform = 'scale(1.05)';
@@ -381,7 +405,7 @@
         });
         
         if(!found){
-          statusDiv.innerHTML = `لم يتم العثور على طالب بالرقم: ${decodedText}`;
+          statusDiv.innerHTML = `❌ لم يتم العثور على طالب بالرقم: ${decodedText}`;
         }
       };
 
@@ -419,6 +443,41 @@
         const stopBtn = document.getElementById('stopBarcodeBtn');
         barcodeBtn.style.display = 'inline-block';
         stopBtn.style.display = 'none';
+      }
+    }
+
+    // دالة إظهار إطار الباركود
+    function showBarcodeFrame(decodedResult) {
+      const frame = document.getElementById('barcodeFrame');
+      const text = document.getElementById('barcodeText');
+      
+      if (decodedResult && decodedResult.resultPoints && decodedResult.resultPoints.length > 0) {
+        const points = decodedResult.resultPoints;
+        if (points.length >= 4) {
+          // حساب موقع الإطار بناءً على نقاط الباركود
+          const x = Math.min(...points.map(p => p.x));
+          const y = Math.min(...points.map(p => p.y));
+          const width = Math.max(...points.map(p => p.x)) - x;
+          const height = Math.max(...points.map(p => p.y)) - y;
+          
+          frame.style.left = x + 'px';
+          frame.style.top = y + 'px';
+          frame.style.width = width + 'px';
+          frame.style.height = height + 'px';
+          frame.style.display = 'block';
+          
+          // إظهار نص الباركود
+          text.style.left = x + 'px';
+          text.style.top = (y - 30) + 'px';
+          text.textContent = decodedResult.decodedText;
+          text.style.display = 'block';
+          
+          // إخفاء الإطار بعد ثانيتين
+          setTimeout(() => {
+            frame.style.display = 'none';
+            text.style.display = 'none';
+          }, 2000);
+        }
       }
     }
   </script>
