@@ -114,6 +114,7 @@
 
   <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script>
     let studentData = [];
     let grades = new Set();
@@ -265,67 +266,42 @@
       const barcodeBtn = document.getElementById('barcodeBtn');
       const stopBtn = document.getElementById('stopBarcodeBtn');
       
-      // تحقق من HTTPS
-      if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-        statusDiv.innerHTML = 'يجب فتح الصفحة عبر HTTPS لاستخدام الكاميرا';
-        return;
-      }
-      
       readerDiv.classList.remove('hidden');
       statusDiv.classList.remove('hidden');
       statusDiv.innerHTML = 'جاري تشغيل الكاميرا...';
       barcodeBtn.style.display = 'none';
       stopBtn.style.display = 'inline-block';
 
-      // أوقف أي ماسح يعمل حالياً
-      if(html5QrCode){
-        try { 
-          await html5QrCode.stop(); 
-          html5QrCode.clear();
-        } catch(_) {}
-      }
-
-      // ابدأ المسح مباشرة
-      try{
-        html5QrCode = new Html5Qrcode('barcodeReader');
+      try {
+        // استخدام getUserMedia مباشرة
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          } 
+        });
         
-        // جرب عدة إعدادات للكاميرا
-        const configs = [
-          { facingMode: 'environment' },
-          { facingMode: 'user' },
-          { deviceId: { exact: 'environment' } },
-          { deviceId: { exact: 'user' } }
-        ];
+        // إنشاء عنصر فيديو
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.style.width = '100%';
+        video.style.height = 'auto';
+        video.style.borderRadius = '8px';
+        video.id = 'cameraVideo';
         
-        let started = false;
-        for(let config of configs) {
-          try {
-            await html5QrCode.start(config, {
-              fps: 10,
-              qrbox: { width: 250, height: 250 },
-              aspectRatio: 1.0
-            }, (decodedText) => {
-              console.log('تم قراءة الباركود:', decodedText);
-              handleBarcodeScanned(decodedText);
-            }, (error) => {
-              // تجاهل أخطاء المسح المستمرة
-            });
-            started = true;
-            break;
-          } catch(e) {
-            console.log('فشل الإعداد:', config, e.message);
-            continue;
-          }
-        }
+        readerDiv.innerHTML = '';
+        readerDiv.appendChild(video);
         
-        if(started) {
-          statusDiv.innerHTML = 'الماسح يعمل - وجه الباركود للكاميرا';
-        } else {
-          throw new Error('فشل في تشغيل الكاميرا');
-        }
+        statusDiv.innerHTML = 'الماسح يعمل - وجه الباركود للكاميرا';
         
-      }catch(err){
-        console.error('خطأ في تشغيل الكاميرا:', err);
+        // بدء قراءة الباركود
+        startBarcodeScanning(video, stream);
+        
+      } catch (error) {
+        console.error('خطأ في تشغيل الكاميرا:', error);
         statusDiv.innerHTML = `
           <div style="color: #dc3545;">
             ❌ تعذر تشغيل الكاميرا<br>
@@ -347,12 +323,15 @@
       const barcodeBtn = document.getElementById('barcodeBtn');
       const stopBtn = document.getElementById('stopBarcodeBtn');
       
-      if(html5QrCode){
-        try { 
-          await html5QrCode.stop(); 
-          html5QrCode.clear();
-          html5QrCode = null;
-        } catch(_) {}
+      // إيقاف البث
+      if(window.currentStream) {
+        window.currentStream.getTracks().forEach(track => track.stop());
+        window.currentStream = null;
+      }
+      
+      // إيقاف المسح
+      if(window.isScanning) {
+        window.isScanning = false;
       }
       
       readerDiv.classList.add('hidden');
@@ -403,6 +382,47 @@
       }
     });
 
+    // دالة قراءة الباركود
+    function startBarcodeScanning(video, stream) {
+      window.currentStream = stream;
+      window.isScanning = true;
+      
+      // إنشاء canvas لرسم الفيديو عليه
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.style.display = 'none';
+      document.body.appendChild(canvas);
+      
+      function scanFrame() {
+        if (!window.isScanning) return;
+        
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // استخدام jsQR لقراءة QR codes
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        
+        if (code) {
+          console.log('تم قراءة QR Code:', code.data);
+          handleBarcodeScanned(code.data);
+          window.isScanning = false;
+          return;
+        }
+        
+        // الاستمرار في المسح
+        if (window.isScanning) {
+          requestAnimationFrame(scanFrame);
+        }
+      }
+      
+      // بدء المسح
+      video.addEventListener('loadedmetadata', () => {
+        scanFrame();
+      });
+    }
+
     // دالة معالجة الباركود المقروء
     function handleBarcodeScanned(decodedText) {
       const statusDiv = document.getElementById('barcodeStatus');
@@ -411,32 +431,64 @@
       
       console.log('البحث عن الباركود:', decodedText);
       
+      // تنظيف النص
+      const cleanBarcode = decodedText.toString().trim();
+      
       for(let item of items){
         const studentName = item.getAttribute('data-name');
         const studentId = item.getAttribute('data-id');
+        const allIds = JSON.parse(item.getAttribute('data-all-ids') || '[]');
+        const qrContent = item.getAttribute('data-qr-content');
         
-        // البحث البسيط في الاسم والرقم
-        if(decodedText.includes(studentName) || 
-           decodedText.includes(studentId) ||
-           studentName.includes(decodedText) ||
-           studentId.includes(decodedText)){
+        // البحث في جميع الأرقام المحتملة
+        const searchIds = [studentId, ...allIds].filter(Boolean);
+        
+        // إضافة محتوى QR code للبحث
+        if (qrContent) {
+          searchIds.push(qrContent);
+        }
+        
+        for(let id of searchIds) {
+          const cleanId = id.toString().trim();
           
-          const select = item.querySelector('select');
-          select.value = 'حاضر';
-          item.style.background = 'var(--present)';
-          
-          statusDiv.innerHTML = `<div style="color: #28a745; font-weight: bold; text-align: center;">${studentName}</div>`;
-          
-          item.style.transform = 'scale(1.05)';
-          setTimeout(() => {
-            item.style.transform = 'scale(1)';
-          }, 300);
-          
-          return;
+          // مقارنة دقيقة
+          if (cleanBarcode === cleanId || 
+              cleanBarcode.includes(cleanId) || 
+              cleanId.includes(cleanBarcode)) {
+            
+            const select = item.querySelector('select');
+            select.value = 'حاضر';
+            item.style.background = 'var(--present)';
+            
+            statusDiv.innerHTML = `<div style="color: #28a745; font-weight: bold; text-align: center;">${studentName}</div>`;
+            
+            item.style.transform = 'scale(1.05)';
+            setTimeout(() => {
+              item.style.transform = 'scale(1)';
+            }, 300);
+            
+            // إعادة تشغيل المسح بعد ثانيتين
+            setTimeout(() => {
+              if (window.isScanning === false) {
+                window.isScanning = true;
+                const video = document.getElementById('cameraVideo');
+                if (video && video.srcObject) {
+                  startBarcodeScanning(video, video.srcObject);
+                }
+              }
+            }, 2000);
+            
+            return;
+          }
         }
       }
       
-      statusDiv.innerHTML = `❌ لم يتم العثور على طالب: ${decodedText}`;
+      statusDiv.innerHTML = `
+        <div style="color: #dc3545;">
+          ❌ لم يتم العثور على طالب: ${cleanBarcode}<br>
+          <small>تأكد من رفع ملف Excel وعرض قائمة الطلاب</small>
+        </div>
+      `;
     }
 
   </script>
