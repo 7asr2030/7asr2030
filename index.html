@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>مساعد الحصر - تسجيل الدخول</title>
+  <style>
+    :root{
+      --saudi-green:#007a3d;
+      --accent:#ffd24a;
+      --bg:#f7fbf9;
+      --card:#ffffff;
+      --muted:#6b7280;
+      --radius:12px;
+      --present:#d4f7d4;
+      --absent:#f7d4d4;
+      --sleep:#f7f1d4;
+      --escape:#f7d4f1;
+      --late:#d4e3f7;
+    }
+    body{
+      margin:0;font-family:'Tahoma','Arial',sans-serif;background:linear-gradient(180deg,var(--bg),#eef7f1);color:#0b1720;padding:16px;
+      display:flex;align-items:center;justify-content:center;min-height:100vh;box-sizing:border-box;
+    }
+    .card{background:var(--card);border-radius:var(--radius);box-shadow:0 6px 18px rgba(3,22,9,0.06);padding:24px;max-width:420px;width:100%;text-align:center}
+    h1{margin:0 0 16px;font-size:22px;color:var(--saudi-green)}
+    .social-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;border-radius:10px;border:none;font-weight:700;font-size:15px;cursor:pointer;margin-bottom:10px}
+    .google{background:#fff;border:1px solid #ddd;color:#000}
+    .microsoft{background:#2f2f2f;color:#fff}
+    .twitter{background:#1da1f2;color:#fff}
+    .skip{background:transparent;color:var(--saudi-green);border:2px solid var(--saudi-green)}
+
+    /* تنسيقات واجهة التطبيق */
+    .app-container{display:none;flex-direction:column;gap:16px;width:100%;max-width:900px;text-align:right}
+    label{font-weight:bold;margin-bottom:6px;color:#0b1720;display:block}
+    input,button,select{padding:10px;border-radius:8px;border:1px solid #ccc;font-size:14px;width:100%;box-sizing:border-box}
+    .upload-box{border:2px dashed var(--saudi-green);padding:20px;text-align:center;border-radius:var(--radius);cursor:pointer}
+    .hidden{display:none}
+    .progress-container{margin-top:10px;display:none}
+    progress{width:100%;height:20px}
+
+    .setup-section{margin-top:20px;display:none;}
+    .students-list{margin-top:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+    .student-item{background:#fff;padding:12px;border-radius:10px;box-shadow:0 4px 8px rgba(0,0,0,0.05);display:flex;flex-direction:column;align-items:flex-start;gap:8px;transition:background 0.3s}
+    .student-item span{font-weight:bold;color:#0b1720}
+
+    #barcodeReader {margin-top:20px; width:100%; max-width:500px;}
+  </style>
+</head>
+<body>
+  <div class="card login-card" id="loginCard">
+    <h1>تسجيل الدخول</h1>
+    <button class="social-btn google">🔵 تسجيل الدخول عبر Google</button>
+    <button class="social-btn microsoft">🟢 تسجيل الدخول عبر Microsoft</button>
+    <button class="social-btn twitter">🐦 تسجيل الدخول عبر Twitter</button>
+    <button class="social-btn skip" id="skipBtn">تخطي وحفظ الأعمال محلياً</button>
+  </div>
+
+  <div class="app-container" id="appContainer">
+    <h1>مساعد الحصر - واجهة الويب</h1>
+    <div>
+      <label for="schoolName">اسم المدرسة</label>
+      <input type="text" id="schoolName" placeholder="أدخل اسم المدرسة" />
+    </div>
+    <div>
+      <label for="teacherName">اسم المعلم</label>
+      <input type="text" id="teacherName" placeholder="أدخل اسم المعلم" />
+    </div>
+    <div>
+      <label for="excelFile">رفع ملف Excel للطلاب</label>
+      <div class="upload-box" onclick="document.getElementById('excelFile').click()">
+        انقر هنا لرفع الملف
+      </div>
+      <input type="file" id="excelFile" class="hidden" accept=".xlsx,.xls" />
+      <div class="progress-container" id="progressContainer">
+        <progress id="uploadProgress" value="0" max="100"></progress>
+        <span id="progressText">0%</span>
+      </div>
+    </div>
+    <button id="continueBtn" style="background:var(--saudi-green);color:#fff;border:none">متابعة</button>
+
+    <!-- قسم إعداد الحصة -->
+    <div class="setup-section" id="setupSection">
+      <h2>إعداد الحصة</h2>
+      <label>اسم المادة</label>
+      <input type="text" id="subjectName" placeholder="مثال: رياضيات" />
+      <label>رقم الحصة</label>
+      <select id="period">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+      </select>
+      <label>الصف</label>
+      <select id="grade"></select>
+      <label>الفصل</label>
+      <select id="classroom"></select>
+      <button id="showStudentsBtn" style="background:var(--saudi-green);color:#fff;border:none;margin-top:10px">عرض الطلاب</button>
+      <button id="barcodeBtn" style="background:var(--accent);color:#000;border:none;margin-top:10px">📷 قراءة الباركود</button>
+      <select id="cameraSelect" class="hidden"></select>
+      <div id="barcodeReader" class="hidden"></div>
+    </div>
+
+    <!-- قائمة الطلاب -->
+    <div class="students-list hidden" id="studentsList"></div>
+  </div>
+
+  <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script>
+    let studentData = [];
+    let grades = new Set();
+    let classrooms = new Set();
+    let html5QrCode;
+
+    // زر التخطي
+    document.getElementById('skipBtn').addEventListener('click',()=>{
+      localStorage.setItem('skipLogin','true');
+      document.getElementById('loginCard').style.display='none';
+      document.getElementById('appContainer').style.display='flex';
+    });
+
+    window.addEventListener('load',()=>{
+      if(localStorage.getItem('skipLogin')==='true'){
+        document.getElementById('loginCard').style.display='none';
+        document.getElementById('appContainer').style.display='flex';
+      }
+    });
+
+    const excelInput = document.getElementById('excelFile');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('uploadProgress');
+    const progressText = document.getElementById('progressText');
+
+    excelInput.addEventListener('change', ()=>{
+      if(excelInput.files.length > 0){
+        progressContainer.style.display='block';
+        let progress = 0;
+        const interval = setInterval(()=>{
+          if(progress < 90){
+            progress += 10; progressBar.value = progress; progressText.textContent = progress + "%";
+          }
+        },200);
+        const reader = new FileReader();
+        reader.onload = (e)=>{
+          try{
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type:'array'});
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, {defval:""});
+            studentData = json;
+
+            // استخرج الصفوف والفصول من الملف
+            grades = new Set(json.map(r=>r["الصف"]).filter(Boolean));
+            classrooms = new Set(json.map(r=>r["الفصل"]).filter(Boolean));
+
+            fillDropdowns();
+
+            localStorage.setItem("studentsData", JSON.stringify(studentData));
+            progress = 100; progressBar.value = 100; progressText.textContent = 'تم الرفع';
+          }catch(err){ console.error(err); }
+          clearInterval(interval);
+        };
+        reader.readAsArrayBuffer(excelInput.files[0]);
+      }
+    });
+
+    function fillDropdowns(){
+      const gradeSelect = document.getElementById('grade');
+      const classSelect = document.getElementById('classroom');
+      gradeSelect.innerHTML = '';
+      classSelect.innerHTML = '';
+      grades.forEach(g=>{
+        const opt = document.createElement('option');
+        opt.textContent = g;
+        gradeSelect.appendChild(opt);
+      });
+      classrooms.forEach(c=>{
+        const opt = document.createElement('option');
+        opt.textContent = c;
+        classSelect.appendChild(opt);
+      });
+    }
+
+    document.getElementById('continueBtn').addEventListener('click', ()=>{
+      document.getElementById('setupSection').style.display='block';
+    });
+
+    document.getElementById('showStudentsBtn').addEventListener('click', ()=>{
+      const listDiv = document.getElementById('studentsList');
+      listDiv.innerHTML = '';
+      if(studentData.length === 0){
+        listDiv.innerHTML = '<p>لم يتم تحميل أي طلاب بعد</p>';
+      } else {
+        const selectedGrade = document.getElementById('grade').value;
+        const selectedClass = document.getElementById('classroom').value;
+        const filtered = studentData.filter(r=>{
+          return (!selectedGrade || r["الصف"]===selectedGrade) && (!selectedClass || r["الفصل"]===selectedClass);
+        });
+
+        if(filtered.length === 0){
+          listDiv.innerHTML = '<p>لا يوجد طلاب في هذا الصف/الفصل</p>';
+        } else {
+          filtered.forEach(r=>{
+            const name = r["الاسم"] || r[Object.keys(r)[0]];
+            const div = document.createElement('div');
+            div.className = 'student-item';
+            div.setAttribute('data-id', r["الهوية"] || name);
+            const select = document.createElement('select');
+            select.innerHTML = `
+              <option value="">اختر</option>
+              <option value="حاضر">حاضر</option>
+              <option value="غائب">غائب</option>
+              <option value="نائم">نائم</option>
+              <option value="هارب">هارب</option>
+              <option value="متأخر">متأخر</option>
+            `;
+            select.addEventListener('change', ()=>{
+              div.style.background = '';
+              switch(select.value){
+                case 'حاضر': div.style.background = 'var(--present)'; break;
+                case 'غائب': div.style.background = 'var(--absent)'; break;
+                case 'نائم': div.style.background = 'var(--sleep)'; break;
+                case 'هارب': div.style.background = 'var(--escape)'; break;
+                case 'متأخر': div.style.background = 'var(--late)'; break;
+                default: div.style.background = '#fff';
+              }
+            });
+            div.appendChild(document.createElement('span')).textContent = name;
+            div.appendChild(select);
+            listDiv.appendChild(div);
+          });
+        }
+      }
+      listDiv.classList.remove('hidden');
+    });
+
+    // ====== الباركود مع اختيار الكاميرا ======
+    document.getElementById('barcodeBtn').addEventListener('click', async ()=>{
+      const readerDiv = document.getElementById('barcodeReader');
+      const cameraSelect = document.getElementById('cameraSelect');
+      readerDiv.classList.remove('hidden');
+      cameraSelect.classList.remove('hidden');
+      readerDiv.innerHTML = '';
+
+      // تحقق من السياق الآمن (HTTPS أو localhost)
+      const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      if(!isSecure){
+        alert('يجب فتح الصفحة عبر HTTPS لاستخدام الكاميرا.');
+        return;
+      }
+
+      // أوقف أي ماسح يعمل حالياً
+      if(html5QrCode){
+        try { await html5QrCode.stop(); } catch(_) {}
+      }
+
+      // اطلب الإذن للوصول للكاميرا أولاً (مهم لسفاري iOS وبعض المتصفحات)
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+        // أوقف البث المؤقت حتى نبدأ عبر Html5Qrcode
+        stream.getTracks().forEach(t=>t.stop());
+      }catch(err){
+        console.error('رفض إذن الكاميرا/غير متاح', err);
+        alert('تعذر الحصول على إذن الكاميرا. الرجاء السماح بالوصول للكاميرا من المتصفح.');
+        return;
+      }
+
+      // بعد منح الإذن، عدّد الكاميرات
+      try{
+        const cameras = await Html5Qrcode.getCameras();
+        cameraSelect.innerHTML = '';
+        if(cameras && cameras.length){
+          cameras.forEach((cam, idx) => {
+            const opt = document.createElement('option');
+            opt.value = cam.id;
+            opt.textContent = cam.label || `كاميرا ${idx+1}`;
+            cameraSelect.appendChild(opt);
+          });
+
+          // حاول بدء المسح بأول كاميرا، وإن فشل سنستخدم وضع الخلفية
+          await startScanner(cameraSelect.value || cameras[0].id);
+
+          cameraSelect.onchange = async ()=>{
+            await startScanner(cameraSelect.value);
+          };
+        } else {
+          // لا توجد كاميرات مرئية بعد التعداد؛ جرّب البدء بوضع البيئة مباشرة
+          await startScanner(null);
+        }
+      }catch(err){
+        console.error('خطأ في جلب الكاميرات', err);
+        // فشل التعداد (قد يحدث في iOS)، جرّب البدء بوضع البيئة
+        await startScanner(null);
+      }
+    });
+
+    async function startScanner(cameraId){
+      const readerDiv = document.getElementById('barcodeReader');
+      if(html5QrCode){
+        try { await html5QrCode.stop(); } catch(_) {}
+      }
+      html5QrCode = new Html5Qrcode('barcodeReader');
+
+      const config = { fps: 10, qrbox: 250 };
+
+      // دالة رد ناتج المسح
+      const onScan = qrCodeMessage => {
+        const listDiv = document.getElementById('studentsList');
+        const items = listDiv.querySelectorAll('.student-item');
+        items.forEach(item=>{
+          const studentId = item.getAttribute('data-id');
+          if(studentId && qrCodeMessage.includes(studentId)){
+            const select = item.querySelector('select');
+            select.value = 'حاضر';
+            item.style.background = 'var(--present)';
+          }
+        });
+      };
+
+      // حاول أولا باستخدام deviceId إن كان متاحاً
+      if(cameraId){
+        try{
+          await html5QrCode.start({ deviceId: { exact: cameraId } }, config, onScan, err => { console.warn('لم يتم التعرف على الباركود', err); });
+          return;
+        }catch(err){
+          console.warn('فشل البدء عبر deviceId، سنحاول وضع environment', err);
+        }
+      }
+
+      //Fallback: استخدم الكاميرا الخلفية عند توفرها
+      try{
+        await html5QrCode.start({ facingMode: { ideal: 'environment' } }, config, onScan, err => { console.warn('لم يتم التعرف على الباركود', err); });
+      }catch(err){
+        console.error('خطأ في تشغيل الكاميرا', err);
+        alert('تعذر تشغيل الكاميرا. تأكد من منح إذن الكاميرا ومن توفر كاميرا على الجهاز.');
+      }
+    }
+  </script>
+</body>
+</html>
