@@ -280,34 +280,19 @@
         try { await html5QrCode.stop(); } catch(_) {}
       }
 
-      // عدّد الكاميرات وابدأ المسح مباشرة
+      // ابدأ المسح مباشرة بدون تعداد الكاميرات
+      statusDiv.innerHTML = 'جاري إعداد الكاميرا...';
+      
+      // حاول البدء مباشرة بالكاميرا الخلفية
       try{
-        statusDiv.innerHTML = 'جاري إعداد الكاميرا...';
-        const cameras = await Html5Qrcode.getCameras();
-        cameraSelect.innerHTML = '';
-        
-        if(cameras && cameras.length){
-          cameras.forEach((cam, idx) => {
-            const opt = document.createElement('option');
-            opt.value = cam.id;
-            opt.textContent = cam.label || `كاميرا ${idx+1}`;
-            cameraSelect.appendChild(opt);
-          });
-
-          // ابدأ المسح مباشرة بأول كاميرا
-          await startScanner(cameras[0].id);
-
-          cameraSelect.onchange = async ()=>{
-            await startScanner(cameraSelect.value);
-          };
-        } else {
-          // لا توجد كاميرات مرئية، جرّب البدء بوضع البيئة
-          await startScanner(null);
-        }
-      }catch(err){
-        console.error('خطأ في جلب الكاميرات', err);
-        // فشل التعداد، جرّب البدء بوضع البيئة مباشرة
         await startScanner(null);
+      }catch(err){
+        console.error('فشل البدء المباشر', err);
+        statusDiv.innerHTML = 'تعذر تشغيل الكاميرا. تأكد من منح إذن الكاميرا.';
+        
+        // إعادة إظهار أزرار التحكم
+        barcodeBtn.style.display = 'inline-block';
+        stopBtn.style.display = 'none';
       }
     });
 
@@ -343,19 +328,11 @@
       }
       html5QrCode = new Html5Qrcode('barcodeReader');
 
-      // تحسين إعدادات التعرف على الباركود
+      // إعدادات مبسطة للتعرف على الباركود
       const config = { 
         fps: 10, 
         qrbox: { width: 300, height: 300 },
-        aspectRatio: 1.0,
-        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
-        showTorchButtonIfSupported: true,
-        showZoomSliderIfSupported: true,
-        defaultZoomValueIfSupported: 2,
-        useBarCodeDetectorIfSupported: true,
-        videoConstraints: {
-          facingMode: "environment"
-        }
+        aspectRatio: 1.0
       };
 
       // دالة رد ناتج المسح مع تحسينات
@@ -401,21 +378,9 @@
         }
       };
 
-      // حاول أولا باستخدام deviceId إن كان متاحاً
-      if(cameraId){
-        try{
-          statusDiv.innerHTML = 'جاري تشغيل الكاميرا...';
-          await html5QrCode.start(cameraId, config, onScan, onError);
-          statusDiv.innerHTML = 'الماسح يعمل - وجه الباركود للكاميرا';
-          return;
-        }catch(err){
-          console.warn('فشل البدء عبر deviceId، سنحاول وضع environment', err);
-          statusDiv.innerHTML = 'جاري المحاولة بكاميرا أخرى...';
-        }
-      }
-
-      //Fallback: استخدم الكاميرا الخلفية عند توفرها
+      // ابدأ المسح مباشرة بالكاميرا الخلفية
       try{
+        statusDiv.innerHTML = 'جاري تشغيل الكاميرا...';
         await html5QrCode.start({ facingMode: { ideal: 'environment' } }, config, onScan, onError);
         statusDiv.innerHTML = 'الماسح يعمل - وجه الباركود للكاميرا';
       }catch(err){
