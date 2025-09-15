@@ -768,17 +768,125 @@
         </html>
       `;
       
-      // إنشاء نافذة جديدة للطباعة
-      const printWindow = window.open('', '_blank');
-      printWindow.document.write(reportHTML);
-      printWindow.document.close();
+      // إنشاء PDF مباشرة دون فتح نافذة جديدة
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
       
-      // انتظار تحميل الخط ثم الطباعة
-      printWindow.onload = function() {
-        setTimeout(() => {
-          printWindow.print();
-        }, 1000);
-      };
+      // إعداد الخط
+      doc.setFont('helvetica');
+      
+      // دالة لكتابة النص العربي
+      function writeArabicText(text, x, y, options = {}) {
+        try {
+          // تحويل النص إلى UTF-8 للتأكد من الترميز الصحيح
+          const utf8Text = unescape(encodeURIComponent(text));
+          doc.text(utf8Text, x, y, options);
+        } catch (error) {
+          // في حالة فشل الكتابة، استخدم النص الإنجليزي
+          console.warn('خطأ في كتابة النص العربي:', error);
+          const englishText = text.replace(/[أ-ي]/g, '?');
+          doc.text(englishText, x, y, options);
+        }
+      }
+      
+      // العنوان الرئيسي
+      doc.setFontSize(20);
+      doc.setFont('helvetica', 'bold');
+      writeArabicText('تقرير حضور الطلاب', 105, 25, { align: 'center' });
+      
+      // خط فاصل
+      doc.line(20, 30, 190, 30);
+      
+      // معلومات التقرير
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      
+      let yPos = 45;
+      const lineHeight = 8;
+      
+      writeArabicText(`اسم المدرسة: ${schoolName}`, 20, yPos);
+      yPos += lineHeight;
+      writeArabicText(`اسم المعلم: ${teacherName}`, 20, yPos);
+      yPos += lineHeight;
+      writeArabicText(`المادة: ${subjectName}`, 20, yPos);
+      yPos += lineHeight;
+      writeArabicText(`الصف: ${grade}`, 20, yPos);
+      yPos += lineHeight;
+      writeArabicText(`الفصل: ${classroom}`, 20, yPos);
+      yPos += lineHeight;
+      writeArabicText(`رقم الحصة: ${period}`, 20, yPos);
+      yPos += lineHeight;
+      writeArabicText(`التاريخ: ${dateStr}`, 20, yPos);
+      yPos += lineHeight;
+      writeArabicText(`الوقت: ${timeStr}`, 20, yPos);
+      
+      yPos += 15;
+      
+      // جدول الحضور
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      writeArabicText('بيانات الحضور', 105, yPos, { align: 'center' });
+      yPos += 12;
+      
+      // رؤوس الجدول
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      writeArabicText('م', 25, yPos);
+      writeArabicText('اسم الطالب', 40, yPos);
+      writeArabicText('الحالة', 120, yPos);
+      writeArabicText('التوقيع', 160, yPos);
+      
+      yPos += 5;
+      doc.line(20, yPos, 190, yPos);
+      yPos += 10;
+      
+      // بيانات الطلاب
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      attendanceData.forEach((student, index) => {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 30;
+        }
+        
+        writeArabicText((index + 1).toString(), 25, yPos);
+        writeArabicText(student.name, 40, yPos);
+        writeArabicText(student.status, 120, yPos);
+        doc.line(160, yPos - 4, 190, yPos - 4);
+        
+        yPos += 10;
+      });
+      
+      // إحصائيات
+      yPos += 15;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      writeArabicText('إحصائيات الحضور:', 20, yPos);
+      yPos += 10;
+      
+      const present = attendanceData.filter(s => s.status === 'حاضر').length;
+      const absent = attendanceData.filter(s => s.status === 'غائب').length;
+      const late = attendanceData.filter(s => s.status === 'متأخر').length;
+      const total = attendanceData.length;
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      writeArabicText(`إجمالي الطلاب: ${total}`, 20, yPos);
+      yPos += 8;
+      writeArabicText(`الحضور: ${present}`, 20, yPos);
+      yPos += 8;
+      writeArabicText(`الغياب: ${absent}`, 20, yPos);
+      yPos += 8;
+      writeArabicText(`التأخير: ${late}`, 20, yPos);
+      yPos += 8;
+      writeArabicText(`نسبة الحضور: ${((present / total) * 100).toFixed(1)}%`, 20, yPos);
+      
+      // حفظ الملف مباشرة
+      const fileName = `تقرير_حضور_${grade}_${classroom}_${dateStr.replace(/\//g, '-')}.pdf`;
+      doc.save(fileName);
+      
+      // رسالة تأكيد
+      alert('تم تحميل ملف PDF بنجاح! 📄\n\nسيتم حفظ الملف في مجلد التحميلات.');
     });
 
   </script>
