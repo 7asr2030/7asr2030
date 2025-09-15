@@ -117,6 +117,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.plugin.standard_fonts_metrics.min.js"></script>
   <script>
     let studentData = [];
     let grades = new Set();
@@ -510,8 +511,18 @@
       const ws1 = XLSX.utils.aoa_to_sheet(reportInfo);
       XLSX.utils.book_append_sheet(wb, ws1, 'معلومات التقرير');
       
-      // إضافة بيانات الحضور
-      const ws2 = XLSX.utils.json_to_sheet(attendanceData);
+      // إضافة بيانات الحضور مع معلومات إضافية
+      const enhancedAttendanceData = attendanceData.map(item => ({
+        ...item,
+        'المدرسة': schoolName,
+        'المعلم': teacherName,
+        'المادة': subjectName,
+        'الصف': grade,
+        'الفصل': classroom,
+        'رقم الحصة': period
+      }));
+      
+      const ws2 = XLSX.utils.json_to_sheet(enhancedAttendanceData);
       XLSX.utils.book_append_sheet(wb, ws2, 'بيانات الحضور');
       
       // حفظ الملف
@@ -556,13 +567,13 @@
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
       
-      // إعداد الخط العربي
+      // إعداد الخط
       doc.setFont('helvetica');
       
       // العنوان الرئيسي
       doc.setFontSize(18);
       doc.setFont('helvetica', 'bold');
-      doc.text('تقرير حضور الطلاب', 105, 20, { align: 'center' });
+      doc.text('Attendance Report', 105, 20, { align: 'center' });
       
       // خط فاصل
       doc.line(20, 25, 190, 25);
@@ -574,37 +585,37 @@
       let yPos = 35;
       const lineHeight = 7;
       
-      doc.text(`اسم المدرسة: ${schoolName}`, 20, yPos);
+      doc.text(`School: ${schoolName}`, 20, yPos);
       yPos += lineHeight;
-      doc.text(`اسم المعلم: ${teacherName}`, 20, yPos);
+      doc.text(`Teacher: ${teacherName}`, 20, yPos);
       yPos += lineHeight;
-      doc.text(`المادة: ${subjectName}`, 20, yPos);
+      doc.text(`Subject: ${subjectName}`, 20, yPos);
       yPos += lineHeight;
-      doc.text(`الصف: ${grade}`, 20, yPos);
+      doc.text(`Grade: ${grade}`, 20, yPos);
       yPos += lineHeight;
-      doc.text(`الفصل: ${classroom}`, 20, yPos);
+      doc.text(`Class: ${classroom}`, 20, yPos);
       yPos += lineHeight;
-      doc.text(`رقم الحصة: ${period}`, 20, yPos);
+      doc.text(`Period: ${period}`, 20, yPos);
       yPos += lineHeight;
-      doc.text(`التاريخ: ${dateStr}`, 20, yPos);
+      doc.text(`Date: ${dateStr}`, 20, yPos);
       yPos += lineHeight;
-      doc.text(`الوقت: ${timeStr}`, 20, yPos);
+      doc.text(`Time: ${timeStr}`, 20, yPos);
       
       yPos += 15;
       
       // جدول الحضور
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.text('بيانات الحضور', 105, yPos, { align: 'center' });
+      doc.text('Attendance Data', 105, yPos, { align: 'center' });
       yPos += 10;
       
       // رؤوس الجدول
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
-      doc.text('م', 25, yPos);
-      doc.text('اسم الطالب', 40, yPos);
-      doc.text('الحالة', 120, yPos);
-      doc.text('التوقيع', 160, yPos);
+      doc.text('No', 25, yPos);
+      doc.text('Student Name', 40, yPos);
+      doc.text('Status', 120, yPos);
+      doc.text('Signature', 160, yPos);
       
       yPos += 5;
       doc.line(20, yPos, 190, yPos);
@@ -629,7 +640,7 @@
       // إحصائيات
       yPos += 10;
       doc.setFont('helvetica', 'bold');
-      doc.text('إحصائيات الحضور:', 20, yPos);
+      doc.text('Attendance Statistics:', 20, yPos);
       yPos += 8;
       
       const present = attendanceData.filter(s => s.status === 'حاضر').length;
@@ -638,18 +649,18 @@
       const total = attendanceData.length;
       
       doc.setFont('helvetica', 'normal');
-      doc.text(`إجمالي الطلاب: ${total}`, 20, yPos);
+      doc.text(`Total Students: ${total}`, 20, yPos);
       yPos += 6;
-      doc.text(`الحضور: ${present}`, 20, yPos);
+      doc.text(`Present: ${present}`, 20, yPos);
       yPos += 6;
-      doc.text(`الغياب: ${absent}`, 20, yPos);
+      doc.text(`Absent: ${absent}`, 20, yPos);
       yPos += 6;
-      doc.text(`التأخير: ${late}`, 20, yPos);
+      doc.text(`Late: ${late}`, 20, yPos);
       yPos += 6;
-      doc.text(`نسبة الحضور: ${((present / total) * 100).toFixed(1)}%`, 20, yPos);
+      doc.text(`Attendance Rate: ${((present / total) * 100).toFixed(1)}%`, 20, yPos);
       
       // حفظ الملف
-      const fileName = `تقرير_حضور_${grade}_${classroom}_${dateStr.replace(/\//g, '-')}.pdf`;
+      const fileName = `Attendance_Report_${grade}_${classroom}_${dateStr.replace(/\//g, '-')}.pdf`;
       doc.save(fileName);
     });
 
