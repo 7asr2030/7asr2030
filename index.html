@@ -118,6 +118,8 @@
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.plugin.standard_fonts_metrics.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.plugin.arabic.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.plugin.auto_table.min.js"></script>
   <script>
     let studentData = [];
     let grades = new Set();
@@ -563,105 +565,220 @@
         return;
       }
       
-      // إنشاء PDF
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
+      // إنشاء HTML للتقرير
+      const reportHTML = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>تقرير حضور الطلاب</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap');
+            body {
+              font-family: 'Amiri', 'Arial', sans-serif;
+              direction: rtl;
+              text-align: right;
+              margin: 0;
+              padding: 20px;
+              background: white;
+              color: #333;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 30px;
+              border-bottom: 2px solid #007a3d;
+              padding-bottom: 20px;
+            }
+            .header h1 {
+              color: #007a3d;
+              font-size: 28px;
+              margin: 0;
+              font-weight: 700;
+            }
+            .info-section {
+              margin-bottom: 30px;
+              background: #f8f9fa;
+              padding: 20px;
+              border-radius: 8px;
+            }
+            .info-row {
+              display: flex;
+              margin-bottom: 10px;
+              font-size: 16px;
+            }
+            .info-label {
+              font-weight: bold;
+              width: 150px;
+              color: #007a3d;
+            }
+            .info-value {
+              flex: 1;
+            }
+            .table-section {
+              margin-top: 30px;
+            }
+            .table-title {
+              text-align: center;
+              font-size: 20px;
+              font-weight: bold;
+              color: #007a3d;
+              margin-bottom: 20px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 30px;
+            }
+            th, td {
+              border: 1px solid #ddd;
+              padding: 12px;
+              text-align: center;
+            }
+            th {
+              background-color: #007a3d;
+              color: white;
+              font-weight: bold;
+            }
+            tr:nth-child(even) {
+              background-color: #f2f2f2;
+            }
+            .signature-col {
+              width: 100px;
+            }
+            .stats {
+              background: #e8f5e8;
+              padding: 20px;
+              border-radius: 8px;
+              margin-top: 20px;
+            }
+            .stats h3 {
+              color: #007a3d;
+              margin-top: 0;
+            }
+            .stats-row {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 8px;
+              font-size: 16px;
+            }
+            .stats-label {
+              font-weight: bold;
+            }
+            .stats-value {
+              color: #007a3d;
+              font-weight: bold;
+            }
+            @media print {
+              body { margin: 0; padding: 15px; }
+              .header { page-break-inside: avoid; }
+              table { page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>تقرير حضور الطلاب</h1>
+          </div>
+          
+          <div class="info-section">
+            <div class="info-row">
+              <div class="info-label">اسم المدرسة:</div>
+              <div class="info-value">${schoolName}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">اسم المعلم:</div>
+              <div class="info-value">${teacherName}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">المادة:</div>
+              <div class="info-value">${subjectName}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">الصف:</div>
+              <div class="info-value">${grade}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">الفصل:</div>
+              <div class="info-value">${classroom}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">رقم الحصة:</div>
+              <div class="info-value">${period}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">التاريخ:</div>
+              <div class="info-value">${dateStr}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">الوقت:</div>
+              <div class="info-value">${timeStr}</div>
+            </div>
+          </div>
+          
+          <div class="table-section">
+            <div class="table-title">بيانات الحضور</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>م</th>
+                  <th>اسم الطالب</th>
+                  <th>الحالة</th>
+                  <th class="signature-col">التوقيع</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${attendanceData.map((student, index) => `
+                  <tr>
+                    <td>${index + 1}</td>
+                    <td>${student.name}</td>
+                    <td>${student.status}</td>
+                    <td class="signature-col"></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="stats">
+            <h3>إحصائيات الحضور</h3>
+            <div class="stats-row">
+              <span class="stats-label">إجمالي الطلاب:</span>
+              <span class="stats-value">${attendanceData.length}</span>
+            </div>
+            <div class="stats-row">
+              <span class="stats-label">الحضور:</span>
+              <span class="stats-value">${attendanceData.filter(s => s.status === 'حاضر').length}</span>
+            </div>
+            <div class="stats-row">
+              <span class="stats-label">الغياب:</span>
+              <span class="stats-value">${attendanceData.filter(s => s.status === 'غائب').length}</span>
+            </div>
+            <div class="stats-row">
+              <span class="stats-label">التأخير:</span>
+              <span class="stats-value">${attendanceData.filter(s => s.status === 'متأخر').length}</span>
+            </div>
+            <div class="stats-row">
+              <span class="stats-label">نسبة الحضور:</span>
+              <span class="stats-value">${((attendanceData.filter(s => s.status === 'حاضر').length / attendanceData.length) * 100).toFixed(1)}%</span>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
       
-      // إعداد الخط
-      doc.setFont('helvetica');
+      // إنشاء نافذة جديدة للطباعة
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(reportHTML);
+      printWindow.document.close();
       
-      // العنوان الرئيسي
-      doc.setFontSize(18);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Attendance Report', 105, 20, { align: 'center' });
-      
-      // خط فاصل
-      doc.line(20, 25, 190, 25);
-      
-      // معلومات التقرير
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'normal');
-      
-      let yPos = 35;
-      const lineHeight = 7;
-      
-      doc.text(`School: ${schoolName}`, 20, yPos);
-      yPos += lineHeight;
-      doc.text(`Teacher: ${teacherName}`, 20, yPos);
-      yPos += lineHeight;
-      doc.text(`Subject: ${subjectName}`, 20, yPos);
-      yPos += lineHeight;
-      doc.text(`Grade: ${grade}`, 20, yPos);
-      yPos += lineHeight;
-      doc.text(`Class: ${classroom}`, 20, yPos);
-      yPos += lineHeight;
-      doc.text(`Period: ${period}`, 20, yPos);
-      yPos += lineHeight;
-      doc.text(`Date: ${dateStr}`, 20, yPos);
-      yPos += lineHeight;
-      doc.text(`Time: ${timeStr}`, 20, yPos);
-      
-      yPos += 15;
-      
-      // جدول الحضور
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Attendance Data', 105, yPos, { align: 'center' });
-      yPos += 10;
-      
-      // رؤوس الجدول
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      doc.text('No', 25, yPos);
-      doc.text('Student Name', 40, yPos);
-      doc.text('Status', 120, yPos);
-      doc.text('Signature', 160, yPos);
-      
-      yPos += 5;
-      doc.line(20, yPos, 190, yPos);
-      yPos += 8;
-      
-      // بيانات الطلاب
-      doc.setFont('helvetica', 'normal');
-      attendanceData.forEach((student, index) => {
-        if (yPos > 250) {
-          doc.addPage();
-          yPos = 20;
-        }
-        
-        doc.text((index + 1).toString(), 25, yPos);
-        doc.text(student.name, 40, yPos);
-        doc.text(student.status, 120, yPos);
-        doc.line(160, yPos - 3, 190, yPos - 3);
-        
-        yPos += 8;
-      });
-      
-      // إحصائيات
-      yPos += 10;
-      doc.setFont('helvetica', 'bold');
-      doc.text('Attendance Statistics:', 20, yPos);
-      yPos += 8;
-      
-      const present = attendanceData.filter(s => s.status === 'حاضر').length;
-      const absent = attendanceData.filter(s => s.status === 'غائب').length;
-      const late = attendanceData.filter(s => s.status === 'متأخر').length;
-      const total = attendanceData.length;
-      
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Total Students: ${total}`, 20, yPos);
-      yPos += 6;
-      doc.text(`Present: ${present}`, 20, yPos);
-      yPos += 6;
-      doc.text(`Absent: ${absent}`, 20, yPos);
-      yPos += 6;
-      doc.text(`Late: ${late}`, 20, yPos);
-      yPos += 6;
-      doc.text(`Attendance Rate: ${((present / total) * 100).toFixed(1)}%`, 20, yPos);
-      
-      // حفظ الملف
-      const fileName = `Attendance_Report_${grade}_${classroom}_${dateStr.replace(/\//g, '-')}.pdf`;
-      doc.save(fileName);
+      // انتظار تحميل الخط ثم الطباعة
+      printWindow.onload = function() {
+        setTimeout(() => {
+          printWindow.print();
+        }, 1000);
+      };
     });
 
   </script>
