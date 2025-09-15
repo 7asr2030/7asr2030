@@ -128,6 +128,7 @@
 
   <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
   <script>
     let studentData = [];
     let grades = new Set();
@@ -326,6 +327,12 @@
       const stopBtn = document.getElementById('stopBarcodeBtn');
       const retryBtn = document.getElementById('retryCameraBtn');
       
+      // إيقاف النظام الجديد
+      if (window.stopScanning) {
+        window.stopScanning();
+      }
+      
+      // إيقاف النظام القديم
       if(html5QrCode){
         try { 
           await html5QrCode.stop(); 
@@ -475,148 +482,156 @@
       const readerDiv = document.getElementById('barcodeReader');
       const statusDiv = document.getElementById('barcodeStatus');
       
-      if(html5QrCode){
-        try { await html5QrCode.stop(); } catch(_) {}
+      try {
+        statusDiv.innerHTML = 'جاري تشغيل الكاميرا...';
+        
+        // استخدام نفس الطريقة التي تعمل مع زر الاختبار
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          } 
+        });
+        
+        // إنشاء عنصر فيديو مباشر
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.style.width = '100%';
+        video.style.height = 'auto';
+        video.style.borderRadius = '8px';
+        video.id = 'cameraVideo';
+        
+        readerDiv.innerHTML = '';
+        readerDiv.appendChild(video);
+        
+        statusDiv.innerHTML = 'الماسح يعمل - وجه الباركود للكاميرا';
+        
+        // بدء قراءة الباركود باستخدام مكتبة QuaggaJS بدلاً من Html5Qrcode
+        startBarcodeDetection(video, stream);
+        
+      } catch (error) {
+        console.error('خطأ في تشغيل الكاميرا:', error);
+        statusDiv.innerHTML = `
+          <div style="color: #dc3545;">
+            ❌ <strong>فشل تشغيل الكاميرا:</strong><br>
+            ${error.message}<br><br>
+            <strong>الحلول:</strong><br>
+            • تأكد من منح إذن الكاميرا<br>
+            • أغلق التطبيقات الأخرى<br>
+            • جرب متصفح آخر
+          </div>
+        `;
+        
+        // إعادة إظهار أزرار التحكم
+        const barcodeBtn = document.getElementById('barcodeBtn');
+        const stopBtn = document.getElementById('stopBarcodeBtn');
+        const retryBtn = document.getElementById('retryCameraBtn');
+        barcodeBtn.style.display = 'inline-block';
+        stopBtn.style.display = 'none';
+        retryBtn.style.display = 'inline-block';
       }
-      html5QrCode = new Html5Qrcode('barcodeReader');
+    }
 
-      // إعدادات مبسطة للتعرف على الباركود
-      const config = { 
-        fps: 10, 
-        qrbox: { width: 300, height: 300 },
-        aspectRatio: 1.0
-      };
-
-      // دالة رد ناتج المسح مع تحسينات
-      const onScan = (decodedText, decodedResult) => {
-        console.log('تم قراءة الباركود:', decodedText);
+    // دالة قراءة الباركود باستخدام QuaggaJS
+    function startBarcodeDetection(video, stream) {
+      const statusDiv = document.getElementById('barcodeStatus');
+      let isScanning = true;
+      
+      // إنشاء canvas لرسم الفيديو عليه
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.style.display = 'none';
+      document.body.appendChild(canvas);
+      
+      // دالة قراءة الباركود
+      function scanFrame() {
+        if (!isScanning) return;
         
-        // إظهار إطار أزرق حول الباركود
-        showBarcodeFrame(decodedResult);
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        const listDiv = document.getElementById('studentsList');
-        const items = listDiv.querySelectorAll('.student-item');
-        let found = false;
-        let studentName = '';
-        
-        items.forEach(item=>{
-          const studentId = item.getAttribute('data-id');
-          if(studentId && (decodedText.includes(studentId) || studentId.includes(decodedText))){
-            const select = item.querySelector('select');
-            select.value = 'حاضر';
-            item.style.background = 'var(--present)';
-            found = true;
-            studentName = item.querySelector('span').textContent;
-            statusDiv.innerHTML = `✅ تم تسجيل حضور الطالب: ${studentName} (${studentId})`;
-            
-            // إضافة تأثير بصري
-            item.style.transform = 'scale(1.05)';
-            setTimeout(() => {
-              item.style.transform = 'scale(1)';
-            }, 500);
+        // استخدام QuaggaJS لقراءة الباركود
+        Quagga.decodeSingle({
+          src: canvas.toDataURL(),
+          numOfWorkers: 0,
+          inputStream: {
+            size: 800
+          },
+          decoder: {
+            readers: ['code_128_reader', 'ean_reader', 'ean_8_reader', 'code_39_reader', 'code_39_vin_reader', 'codabar_reader', 'upc_reader', 'upc_e_reader', 'i2of5_reader']
+          }
+        }, function(result) {
+          if (result && result.codeResult) {
+            console.log('تم قراءة الباركود:', result.codeResult.code);
+            handleBarcodeScanned(result.codeResult.code);
+            isScanning = false;
+            return;
           }
         });
         
-        if(!found){
-          statusDiv.innerHTML = `❌ لم يتم العثور على طالب بالرقم: ${decodedText}`;
+        // الاستمرار في المسح
+        if (isScanning) {
+          requestAnimationFrame(scanFrame);
+        }
+      }
+      
+      // بدء المسح
+      video.addEventListener('loadedmetadata', () => {
+        scanFrame();
+      });
+      
+      // حفظ المرجع للإيقاف لاحقاً
+      window.currentStream = stream;
+      window.currentVideo = video;
+      window.currentCanvas = canvas;
+      window.isScanning = () => isScanning;
+      window.stopScanning = () => {
+        isScanning = false;
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+        if (canvas && canvas.parentNode) {
+          canvas.parentNode.removeChild(canvas);
         }
       };
+    }
 
-      // دالة معالجة الأخطاء
-      const onError = (error) => {
-        // لا نطبع كل خطأ في الكونسول لتجنب الإزعاج
-        if(!error.includes('No MultiFormat Readers')) {
-          console.warn('خطأ في المسح:', error);
-        }
-      };
-
-      // جرب عدة طرق لتشغيل الكاميرا
-      const cameraConfigs = [
-        { facingMode: { ideal: 'environment' } },
-        { facingMode: { ideal: 'user' } },
-        { facingMode: 'environment' },
-        { facingMode: 'user' },
-        {} // بدون قيود
-      ];
-
-      let cameraStarted = false;
-
-      for(let i = 0; i < cameraConfigs.length; i++){
-        try{
-          statusDiv.innerHTML = `جاري تشغيل الكاميرا... (المحاولة ${i+1})`;
+    // دالة معالجة الباركود المقروء
+    function handleBarcodeScanned(decodedText) {
+      const statusDiv = document.getElementById('barcodeStatus');
+      
+      // إظهار إطار أزرق حول الباركود (مؤقت)
+      showBarcodeFrame({ decodedText });
+      
+      const listDiv = document.getElementById('studentsList');
+      const items = listDiv.querySelectorAll('.student-item');
+      let found = false;
+      let studentName = '';
+      
+      items.forEach(item=>{
+        const studentId = item.getAttribute('data-id');
+        if(studentId && (decodedText.includes(studentId) || studentId.includes(decodedText))){
+          const select = item.querySelector('select');
+          select.value = 'حاضر';
+          item.style.background = 'var(--present)';
+          found = true;
+          studentName = item.querySelector('span').textContent;
+          statusDiv.innerHTML = `✅ تم تسجيل حضور الطالب: ${studentName} (${studentId})`;
           
-          // محاولة تشغيل الكاميرا
-          await html5QrCode.start(cameraConfigs[i], config, onScan, onError);
-          
-          statusDiv.innerHTML = 'الماسح يعمل - وجه الباركود للكاميرا';
-          cameraStarted = true;
-          
-          // تأكد من إظهار الكاميرا
+          // إضافة تأثير بصري
+          item.style.transform = 'scale(1.05)';
           setTimeout(() => {
-            const video = readerDiv.querySelector('video');
-            const canvas = readerDiv.querySelector('canvas');
-            
-            if (video) {
-              video.style.width = '100%';
-              video.style.height = 'auto';
-              video.style.borderRadius = '8px';
-              video.style.display = 'block';
-              console.log('تم عرض الكاميرا بنجاح');
-            } else if (canvas) {
-              canvas.style.width = '100%';
-              canvas.style.height = 'auto';
-              canvas.style.borderRadius = '8px';
-              canvas.style.display = 'block';
-              console.log('تم عرض Canvas بنجاح');
-            } else {
-              console.warn('لم يتم العثور على عنصر الفيديو أو Canvas');
-              // إضافة رسالة بديلة
-              readerDiv.innerHTML = `
-                <div class="camera-container">
-                  <div style="font-size: 48px; margin-bottom: 20px;">📷</div>
-                  <div style="color: #28a745; font-weight: bold; margin-bottom: 10px;">الماسح يعمل</div>
-                  <div style="color: #666;">وجه الباركود للكاميرا</div>
-                </div>
-              `;
-            }
-          }, 1500);
-          
-          break; // نجح التشغيل، اخرج من الحلقة
-          
-        }catch(err){
-          console.warn(`فشلت المحاولة ${i+1}:`, err);
-          
-          if(i === cameraConfigs.length - 1){
-            // فشلت جميع المحاولات
-            console.error('فشل تشغيل الكاميرا بجميع الطرق', err);
-            statusDiv.innerHTML = `
-              <div style="color: #dc3545; text-align: right;">
-                <strong>تعذر تشغيل الكاميرا</strong><br><br>
-                <strong>الحلول المقترحة:</strong><br>
-                1️⃣ <strong>منح إذن الكاميرا:</strong><br>
-                &nbsp;&nbsp;• ابحث عن أيقونة الكاميرا في شريط العنوان<br>
-                &nbsp;&nbsp;• اضغط عليها واختر "السماح"<br><br>
-                2️⃣ <strong>إغلاق التطبيقات الأخرى:</strong><br>
-                &nbsp;&nbsp;• أغلق Zoom, Teams, Skype<br>
-                &nbsp;&nbsp;• تأكد من عدم استخدام الكاميرا في تطبيق آخر<br><br>
-                3️⃣ <strong>تحديث الصفحة:</strong><br>
-                &nbsp;&nbsp;• اضغط F5 أو Ctrl+R<br><br>
-                4️⃣ <strong>متصفح آخر:</strong><br>
-                &nbsp;&nbsp;• جرب Chrome أو Firefox<br>
-                &nbsp;&nbsp;• تأكد من أن المتصفح محدث<br><br>
-                <button onclick="location.reload()" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; margin-top: 10px;">🔄 تحديث الصفحة</button>
-              </div>
-            `;
-            
-            // إعادة إظهار أزرار التحكم
-            const barcodeBtn = document.getElementById('barcodeBtn');
-            const stopBtn = document.getElementById('stopBarcodeBtn');
-            const retryBtn = document.getElementById('retryCameraBtn');
-            barcodeBtn.style.display = 'inline-block';
-            stopBtn.style.display = 'none';
-            retryBtn.style.display = 'inline-block';
-          }
+            item.style.transform = 'scale(1)';
+          }, 500);
         }
+      });
+      
+      if(!found){
+        statusDiv.innerHTML = `❌ لم يتم العثور على طالب بالرقم: ${decodedText}`;
       }
     }
 
