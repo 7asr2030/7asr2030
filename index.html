@@ -101,8 +101,10 @@
       <select id="classroom"></select>
       <button id="showStudentsBtn" style="background:var(--saudi-green);color:#fff;border:none;margin-top:10px">عرض الطلاب</button>
       <button id="barcodeBtn" style="background:var(--accent);color:#000;border:none;margin-top:10px">📷 قراءة الباركود</button>
+      <button id="stopBarcodeBtn" style="background:#dc3545;color:#fff;border:none;margin-top:10px;display:none">⏹️ إيقاف الماسح</button>
       <select id="cameraSelect" class="hidden"></select>
       <div id="barcodeReader" class="hidden"></div>
+      <div id="barcodeStatus" class="hidden" style="margin-top:10px;padding:10px;background:#e9ecef;border-radius:8px;text-align:center"></div>
     </div>
 
     <!-- قائمة الطلاب -->
@@ -244,14 +246,22 @@
     document.getElementById('barcodeBtn').addEventListener('click', async ()=>{
       const readerDiv = document.getElementById('barcodeReader');
       const cameraSelect = document.getElementById('cameraSelect');
+      const statusDiv = document.getElementById('barcodeStatus');
+      const barcodeBtn = document.getElementById('barcodeBtn');
+      const stopBtn = document.getElementById('stopBarcodeBtn');
+      
       readerDiv.classList.remove('hidden');
       cameraSelect.classList.remove('hidden');
+      statusDiv.classList.remove('hidden');
       readerDiv.innerHTML = '';
+      statusDiv.innerHTML = 'جاري إعداد الكاميرا...';
+      barcodeBtn.style.display = 'none';
+      stopBtn.style.display = 'inline-block';
 
       // تحقق من السياق الآمن (HTTPS أو localhost)
       const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
       if(!isSecure){
-        alert('يجب فتح الصفحة عبر HTTPS لاستخدام الكاميرا.');
+        statusDiv.innerHTML = 'يجب فتح الصفحة عبر HTTPS لاستخدام الكاميرا.';
         return;
       }
 
@@ -262,12 +272,16 @@
 
       // اطلب الإذن للوصول للكاميرا أولاً (مهم لسفاري iOS وبعض المتصفحات)
       try{
+        statusDiv.innerHTML = 'جاري طلب إذن الكاميرا...';
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
         // أوقف البث المؤقت حتى نبدأ عبر Html5Qrcode
         stream.getTracks().forEach(t=>t.stop());
+        statusDiv.innerHTML = 'تم منح إذن الكاميرا. جاري إعداد الماسح...';
       }catch(err){
         console.error('رفض إذن الكاميرا/غير متاح', err);
-        alert('تعذر الحصول على إذن الكاميرا. الرجاء السماح بالوصول للكاميرا من المتصفح.');
+        statusDiv.innerHTML = 'تعذر الحصول على إذن الكاميرا. الرجاء السماح بالوصول للكاميرا من المتصفح.';
+        barcodeBtn.style.display = 'inline-block';
+        stopBtn.style.display = 'none';
         return;
       }
 
@@ -300,45 +314,111 @@
       }
     });
 
+    // زر إيقاف الماسح
+    document.getElementById('stopBarcodeBtn').addEventListener('click', async ()=>{
+      const readerDiv = document.getElementById('barcodeReader');
+      const cameraSelect = document.getElementById('cameraSelect');
+      const statusDiv = document.getElementById('barcodeStatus');
+      const barcodeBtn = document.getElementById('barcodeBtn');
+      const stopBtn = document.getElementById('stopBarcodeBtn');
+      
+      if(html5QrCode){
+        try { 
+          await html5QrCode.stop(); 
+          html5QrCode = null;
+        } catch(_) {}
+      }
+      
+      readerDiv.classList.add('hidden');
+      cameraSelect.classList.add('hidden');
+      statusDiv.classList.add('hidden');
+      barcodeBtn.style.display = 'inline-block';
+      stopBtn.style.display = 'none';
+      statusDiv.innerHTML = '';
+    });
+
     async function startScanner(cameraId){
       const readerDiv = document.getElementById('barcodeReader');
+      const statusDiv = document.getElementById('barcodeStatus');
+      
       if(html5QrCode){
         try { await html5QrCode.stop(); } catch(_) {}
       }
       html5QrCode = new Html5Qrcode('barcodeReader');
 
-      const config = { fps: 10, qrbox: 250 };
+      // تحسين إعدادات التعرف على الباركود
+      const config = { 
+        fps: 10, 
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0,
+        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+      };
 
-      // دالة رد ناتج المسح
-      const onScan = qrCodeMessage => {
+      // دالة رد ناتج المسح مع تحسينات
+      const onScan = (decodedText, decodedResult) => {
+        console.log('تم قراءة الباركود:', decodedText);
+        statusDiv.innerHTML = `تم قراءة الباركود: ${decodedText}`;
+        
         const listDiv = document.getElementById('studentsList');
         const items = listDiv.querySelectorAll('.student-item');
+        let found = false;
+        
         items.forEach(item=>{
           const studentId = item.getAttribute('data-id');
-          if(studentId && qrCodeMessage.includes(studentId)){
+          if(studentId && (decodedText.includes(studentId) || studentId.includes(decodedText))){
             const select = item.querySelector('select');
             select.value = 'حاضر';
             item.style.background = 'var(--present)';
+            found = true;
+            statusDiv.innerHTML = `تم تسجيل حضور الطالب: ${studentId}`;
+            
+            // إضافة تأثير بصري
+            item.style.transform = 'scale(1.05)';
+            setTimeout(() => {
+              item.style.transform = 'scale(1)';
+            }, 500);
           }
         });
+        
+        if(!found){
+          statusDiv.innerHTML = `لم يتم العثور على طالب بالرقم: ${decodedText}`;
+        }
+      };
+
+      // دالة معالجة الأخطاء
+      const onError = (error) => {
+        // لا نطبع كل خطأ في الكونسول لتجنب الإزعاج
+        if(!error.includes('No MultiFormat Readers')) {
+          console.warn('خطأ في المسح:', error);
+        }
       };
 
       // حاول أولا باستخدام deviceId إن كان متاحاً
       if(cameraId){
         try{
-          await html5QrCode.start({ deviceId: { exact: cameraId } }, config, onScan, err => { console.warn('لم يتم التعرف على الباركود', err); });
+          statusDiv.innerHTML = 'جاري تشغيل الكاميرا...';
+          await html5QrCode.start({ deviceId: { exact: cameraId } }, config, onScan, onError);
+          statusDiv.innerHTML = 'الماسح يعمل - وجه الباركود للكاميرا';
           return;
         }catch(err){
           console.warn('فشل البدء عبر deviceId، سنحاول وضع environment', err);
+          statusDiv.innerHTML = 'جاري المحاولة بكاميرا أخرى...';
         }
       }
 
       //Fallback: استخدم الكاميرا الخلفية عند توفرها
       try{
-        await html5QrCode.start({ facingMode: { ideal: 'environment' } }, config, onScan, err => { console.warn('لم يتم التعرف على الباركود', err); });
+        await html5QrCode.start({ facingMode: { ideal: 'environment' } }, config, onScan, onError);
+        statusDiv.innerHTML = 'الماسح يعمل - وجه الباركود للكاميرا';
       }catch(err){
         console.error('خطأ في تشغيل الكاميرا', err);
-        alert('تعذر تشغيل الكاميرا. تأكد من منح إذن الكاميرا ومن توفر كاميرا على الجهاز.');
+        statusDiv.innerHTML = 'تعذر تشغيل الكاميرا. تأكد من منح إذن الكاميرا ومن توفر كاميرا على الجهاز.';
+        
+        // إعادة إظهار أزرار التحكم
+        const barcodeBtn = document.getElementById('barcodeBtn');
+        const stopBtn = document.getElementById('stopBarcodeBtn');
+        barcodeBtn.style.display = 'inline-block';
+        stopBtn.style.display = 'none';
       }
     }
   </script>
